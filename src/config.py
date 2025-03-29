@@ -1,27 +1,22 @@
-from env import get_action_space, get_observation_space
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy.policy import PolicySpec
+
+from env import get_action_space, get_observation_space
 
 
 def policy_map_fn(agent_id: str, _episode=None, _worker=None, **_kwargs) -> str:
     if "friendly" in agent_id:
         return "friendly_policy"
-    elif "prey" in agent_id:
-        return "prey_policy"
     else:
         raise RuntimeError(f"Invalid agent_id: {agent_id}")
 
 
-def get_multiagent_policies(
-    num_friendlies: int, num_prey: int
-) -> dict[str, PolicySpec]:
+def get_multiagent_policies(num_friendlies: int) -> dict[str, PolicySpec]:
     policies: dict[str, PolicySpec] = {}
 
-    observation_space = get_observation_space(
-        num_friendlies=num_friendlies, num_prey=num_prey
-    )
+    observation_space = get_observation_space(num_friendlies=num_friendlies)
 
-    action_space = get_action_space(num_friendlies=num_friendlies, num_prey=num_prey)
+    action_space = get_action_space(num_friendlies=num_friendlies)
 
     policies["friendly_policy"] = PolicySpec(
         policy_class=None,
@@ -43,7 +38,6 @@ def get_multiagent_policies(
 def get_algo_config(env_config: dict, train: bool = True, num_trials: int = 20):
     policies = get_multiagent_policies(
         num_friendlies=env_config["num_friendlies"],
-        num_prey=env_config["num_prey"],
     )
 
     num_gpus = 1

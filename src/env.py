@@ -10,47 +10,56 @@ from matplotlib.patches import Circle
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
-def get_agent_ids(num_friendlies: int, num_prey: int) -> list[str]:
-    return [f"friendly_{i}" for i in range(num_friendlies)] + [
-        f"prey_{i}" for i in range(num_prey)
-    ]
+def get_agent_ids(num_friendlies: int) -> list[str]:
+    return [f"friendly_{i}" for i in range(num_friendlies)]
 
 
-def get_observation_space(num_friendlies: int, num_prey: int) -> gym.spaces.Space:
-    agent_ids = get_agent_ids(num_friendlies, num_prey)
+def get_observation_space(num_friendlies: int) -> gym.spaces.Space:
+    agent_ids = get_agent_ids(num_friendlies)
 
-    observation_space = gym.spaces.Box(
-        low=-1e3, high=1e3, shape=(len(agent_ids) * 6 + 2,), dtype=np.float32
+    observation_space = gym.spaces.Dict(
+        {
+            "relative_agent_positions": gym.spaces.Box(
+                low=-1e3, high=1e3, shape=(len(agent_ids) * 2,), dtype=np.float32
+            ),
+            "agents_alive": gym.spaces.MultiBinary(len(agent_ids)),
+            "our_position": gym.spaces.Box(
+                low=-1e3, high=1e3, shape=(2,), dtype=np.float32
+            ),
+            "relative_target_position": gym.spaces.Box(
+                low=-1e3, high=1e3, shape=(2,), dtype=np.float32
+            ),
+        }
     )
+
     return observation_space
 
 
-def get_action_space(num_friendlies: int, num_prey: int) -> gym.spaces.Space:
-    return gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+def get_action_space(num_friendlies: int) -> gym.spaces.Space:
+    return gym.spaces.Dict(
+        {
+            "movement": gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32),
+            "send_stream": gym.spaces.Discrete(num_friendlies + 1),
+        }
+    )
 
 
 class CustomEnv(MultiAgentEnv):
     def __init__(self, config: dict):
-        self.num_friendlies: int = config.get("num_friendlies", 4)
-        self.num_prey: int = config.get("num_prey", 1)
-        self.scare_arm_length: float = config.get("scare_arm_length", 3.0)
+        self.num_friendlies: int = config.get("num_friendlies", 5)
         self.collide_radius: float = config.get("collide_radius", 0.5)
-        self.prey_speed: float = config.get("prey_speed", 1.0)
         self.friendly_speed: float = config.get("friendly_speed", 1.0)
-        self.noise_distance: float = config.get("noise_distance", 0.1)
-        self.noise_direction: float = config.get("noise_direction", 0.05)
-        self.update_mean: float = config.get("update_mean", 3)
-        self.update_std: float = config.get("update_std", 0.8)
-        self.prey_win_distance: float = config.get("prey_win_distance", 45)
+        self.target_speed: float = config.get("target_speed", 0.7)
+        self.optimal_target_dist = config.get("optimal_target_dist", 5.0)
+        self.step_communication_down = config.get("step_communication_down", 100)
+        self.num_drones_down = config.get("num_drones_down", 2)
         self.max_steps: int = config.get("max_steps", 200)
         self.training: bool = config.get("train", True)
 
-        self.action_space = get_action_space(self.num_friendlies, self.num_prey)
-        self.observation_space = get_observation_space(
-            self.num_friendlies, self.num_prey
-        )
+        self.action_space = get_action_space(self.num_friendlies)
+        self.observation_space = get_observation_space(self.num_friendlies)
 
-        self._agent_ids = get_agent_ids(self.num_friendlies, self.num_prey)
+        self._agent_ids = get_agent_ids(self.num_friendlies)
         os.makedirs("frames", exist_ok=True)
         os.makedirs("episodes", exist_ok=True)
         super().__init__()
@@ -63,10 +72,12 @@ class CustomEnv(MultiAgentEnv):
         # Initialize the mean position for the agents
         agent_theta = self.rnjesus.uniform(0, 2 * np.pi)
         mean_distance = 15
-        agent_mean_start = np.array([
-            mean_distance * np.cos(agent_theta),
-            mean_distance * np.sin(agent_theta),
-        ])
+        agent_mean_start = np.array(
+            [
+                mean_distance * np.cos(agent_theta),
+                mean_distance * np.sin(agent_theta),
+            ]
+        )
 
         agent_dist_from_mean = 5
 
@@ -78,75 +89,31 @@ class CustomEnv(MultiAgentEnv):
                 np.linspace(0, 2 * np.pi, self.num_friendlies, endpoint=False)
             )
         }
-        # put the prey around 0,0
-        prey_dist_from_mean = 2
-        for i, theta in enumerate(
-            np.linspace(0, 2 * np.pi, self.num_prey, endpoint=False)
-        ):
-            self.agent_positions[f"prey_{i}"] = prey_dist_from_mean * np.array([
-                np.cos(theta),
-                np.sin(theta),
-            ])
+        self.agents_alive = {agent_id: True for agent_id in self.agent_positions}
+        self.target_pos = np.array([-5, 5])
 
-        self.prey_immobilized = {f"prey_{i}": False for i in range(self.num_prey)}
-
-        self.steps_until_obs_update: dict[str, dict[str, int]] = {
-            id: {other_id: 0 for other_id in self.agent_positions.keys()}
-            for id in self.agent_positions.keys()
-        }
-
-        self.prev_obs = {
-            id: np.zeros((len(self._agent_ids) * 6 + 2), dtype=np.float32)
-            for id in self._agent_ids
-        }
-
-        info = (
-            {
-                "initial_angle": agent_theta,
-            }
-            if not self.training
-            else {}
-        )
         obs = self._get_obs()
-        return obs, info
+        return obs
 
     def step(self, action_dict):
         self.step_count += 1
+        self._last_actions = action_dict
         rewards = {agent_id: 0.0 for agent_id in action_dict}
         done = {"__all__": False}
         truncated = {"__all__": False}
 
         # move agents
         for agent_id, action in action_dict.items():
-            speed = (
-                self.friendly_speed
-                if "friendly" in agent_id
-                else self.prey_speed
-                if not self.prey_immobilized[agent_id]
-                else 0
-            )
-            action = speed * np.clip(np.array(action), -1, 1)
+            action = np.multiply(self.friendly_speed, np.clip(np.array(action), -1, 1))
             self.agent_positions[agent_id] += action
-
-        for prey_id, prey_pos in [
-            (id, pos) for id, pos in self.agent_positions.items() if "prey" in id
-        ]:
-            crashed = any(
-                np.linalg.norm(prey_pos - other_pos) < self.collide_radius * 2
-                for other_id, other_pos in self.agent_positions.items()
-                if prey_id != other_id and "friendly" in other_id
-            )
-            if not self._prey_can_move(prey_pos) and not crashed:
-                self.prey_immobilized[prey_id] = True
+        # move target to the right
+        self.target_pos[0] += self.target_speed
 
         info = {
             agent_id: {"position": self.agent_positions[agent_id]}
             for agent_id in action_dict
         }
-
-        # if all prey immobilized or prey gets away end the episode
-        if all(self.prey_immobilized.values()):
-            done["__all__"] = True
+        info["target"] = {"position": self.target_pos}
 
         # if the max steps are reached end the episode
         if self.step_count >= self.max_steps:
@@ -154,7 +121,26 @@ class CustomEnv(MultiAgentEnv):
             truncated["__all__"] = True
 
         # calculate rewards
+        stream_reward = 0
         for agent_id, agent_position in self.agent_positions.items():
+            # if agent is alive and steam_target is not index -1 then steam and get reward
+            if (
+                self.agents_alive[agent_id]
+                and action_dict[agent_id]["send_stream"] != self.num_friendlies
+            ):
+                distance_to_target = np.linalg.norm(agent_position - self.target_pos)
+                midpoint_tower_to_agent = agent_position / 2
+                receiver_position = self.agent_positions[
+                    f"friendly_{action_dict[agent_id]['send_stream']}"
+                ]
+
+                stream_reward += 0.5 * (
+                    np.exp(-distance_to_target)
+                    + np.exp(
+                        -np.linalg.norm(receiver_position - midpoint_tower_to_agent)
+                    )
+                )
+
             # punish agents for colliding with other agents
             for other_agent_id, other_position in self.agent_positions.items():
                 if (
@@ -164,226 +150,106 @@ class CustomEnv(MultiAgentEnv):
                 ):
                     rewards[agent_id] -= 0.01
 
-            if "friendly" in agent_id:
-                # small reward for getting closer to the closest prey not immobilized
-                nearest_prey_position = self._find_nearest_non_immobile_prey_position(
-                    agent_id
-                )
-                if nearest_prey_position is not None:
-                    rewards[agent_id] -= (
-                        0.0001
-                        * np.linalg.norm(agent_position - nearest_prey_position).item()
-                    )
-
-                # even smaller reward for getting further mean distance to other agents
-                rewards[agent_id] -= (
-                    0.00001
-                    * np.mean([
-                        np.linalg.norm(agent_position - other_position)
-                        for other_id, other_position in self.agent_positions.items()
-                        if "friendly" in other_id and other_id != agent_id
-                    ]).item()
-                )
-
-                if done["__all__"]:
-                    # get penalty based on how many steps the friendly survived
-                    rewards[agent_id] -= self.step_count / self.max_steps
-
-            if "prey" in agent_id:
-                if done["__all__"]:
-                    # get reward based on how many steps the prey survived
-                    rewards[agent_id] += self.step_count / self.max_steps
+        # give all agents the stream reward
+        for agent_id in self.agent_positions:
+            rewards[agent_id] += stream_reward
 
         obs = self._get_obs()
         rewards = {k: np.nan_to_num(v) for k, v in rewards.items()}
         return obs, rewards, done, truncated, info
 
-    def _prey_can_move(self, prey_pos: np.ndarray):
-        for theta in np.linspace(0, 2 * np.pi, 360):
-            if all(
-                not self._prey_ray_intersects_friendly_scare_arms(
-                    prey_pos, friendly_pos, theta
-                )
-                for friendly_id, friendly_pos in self.agent_positions.items()
-                if "friendly" in friendly_id
-            ):
-                return True
-
-        return False
-
-    def _prey_ray_intersects_friendly_scare_arms(
-        self, prey_pos: np.ndarray, friendly_pos: np.ndarray, direction: float
-    ):
-        theta_to_friendly = np.arctan2(
-            friendly_pos[1] - prey_pos[1],
-            friendly_pos[0] - prey_pos[0],
-        )
-        theta_diff = np.abs(theta_to_friendly - direction) % (2 * np.pi)
-
-        if theta_diff > np.pi:
-            theta_diff = 2 * np.pi - theta_diff
-
-        if theta_diff > np.pi / 2:
-            return False
-
-        opposite = np.tan(theta_diff) * np.linalg.norm(prey_pos - friendly_pos)
-
-        return opposite < self.scare_arm_length
-
     def _get_obs(self, seed=None):
-        obs = {id: self.prev_obs[id].copy() for id in self.prev_obs.keys()}
+        obs = {}
 
-        for i, (agent_id, agent_position) in enumerate(self.agent_positions.items()):
-            # set last two values to the position of the agent
-            obs[agent_id][-2:] = agent_position
+        for agent_id, agent_position in self.agent_positions.items():
 
-            for j, (other_entity_id, other_entity_position) in enumerate(
-                self.agent_positions.items()
-            ):
-                # 0-1: relative position
-                # 2-3: previous relative position
-                # 4: agent type
-                # 5: obs age
+            # convert agent positions to relative positions
+            relative_positions = np.array(
+                [
+                    other_position - agent_position
+                    for other_position in self.agent_positions.values()
+                ]
+            ).flatten()
 
-                # obs[agent_id][other_entity_id]["obs_age"] += 1
-                obs[agent_id][j * 6 + 5] += 1
+            relative_target_position = self.target_pos - agent_position
 
-                self.steps_until_obs_update[agent_id][other_entity_id] -= 1
-
-                if self.steps_until_obs_update[agent_id][other_entity_id] <= 0:
-                    relative_position = other_entity_position - agent_position
-                    distance = np.linalg.norm(relative_position)
-
-                    noisy_theta = np.arctan2(
-                        relative_position[1], relative_position[0]
-                    ) + self.rnjesus.normal(0, self.noise_direction)
-
-                    noisy_distance = (
-                        distance
-                        + self.rnjesus.normal(0, self.noise_distance) * distance
-                    )
-                    noisy_position = np.array(
-                        [
-                            noisy_distance * np.cos(noisy_theta),
-                            noisy_distance * np.sin(noisy_theta),
-                        ],
-                        dtype=np.float32,
-                    )
-
-                    # obs[agent_id][other_entity_id]["prev_agent_rel_pos"] = obs[
-                    #     agent_id
-                    # ][other_entity_id]["agent_rel_pos"].copy()
-                    obs[agent_id][j * 6 + 2 : j * 6 + 4] = obs[agent_id][
-                        j * 6 : j * 6 + 2
+            obs[agent_id] = {
+                "relative_agent_positions": relative_positions,
+                "agents_alive": np.array(
+                    [
+                        1 if self.agents_alive[agent_id] else 0
+                        for agent_id in self.agent_positions
                     ]
-
-                    # obs[agent_id][other_entity_id]["agent_rel_pos"] = noisy_position
-                    obs[agent_id][j * 6 : j * 6 + 2] = noisy_position
-                    # obs[agent_id][other_entity_id]["agent_type"] = (
-                    #     0 if "friendly" in other_entity_id else 1
-                    # )
-                    obs[agent_id][j * 6 + 4] = 0 if "friendly" in other_entity_id else 1
-
-                    # obs[agent_id][other_entity_id]["obs_age"] = 0
-                    obs[agent_id][j * 6 + 5] = 0
-
-                    self.steps_until_obs_update[agent_id][other_entity_id] = int(
-                        self.rnjesus.normal(self.update_mean, self.update_std)
-                    )
-
-        self.prev_obs = {id: obs[id].copy() for id in obs.keys()}
+                ),
+                "our_position": agent_position,
+                "relative_target_position": relative_target_position,
+            }
 
         return obs
 
-    def _find_nearest_non_immobile_prey_position(
-        self, agent_id: str
-    ) -> np.ndarray | None:
-        agent_position = self.agent_positions[agent_id]
-        prey_positions = [
-            pos
-            for id, pos in self.agent_positions.items()
-            if "prey" in id and not self.prey_immobilized[id]
-        ]
-        if not prey_positions:
-            return None
-        return min(prey_positions, key=lambda pos: np.linalg.norm(agent_position - pos))
-
-    def render(self, mode="human", obs: dict[str, np.ndarray] | None = None):
+    def render(self, obs: dict[str, dict]):
         plt.figure(figsize=(8, 8))
+
+        # Plot the tower at origin
+        plt.plot(0, 0, "ks", markersize=10, label="Tower")
+
+        # Plot target
+        plt.plot(
+            self.target_pos[0], self.target_pos[1], "r*", markersize=10, label="Target"
+        )
+
+        # Plot all agents
         for agent_id, agent_position in self.agent_positions.items():
-            if "friendly" in agent_id:
-                if obs is not None:
-                    # print small grey dot for all observations of other agents
-                    for j, (other_entity_id, other_entity_position) in enumerate(
-                        self.agent_positions.items()
-                    ):
-                        if other_entity_id != agent_id:
-                            plt.plot(
-                                obs[agent_id][j * 6] + agent_position[0],
-                                obs[agent_id][j * 6 + 1] + agent_position[1],
-                                "o",
-                                color=(
-                                    "gray" if obs[agent_id][j * 6 + 4] == 0 else "black"
-                                ),
-                                markersize=2,
-                            )
+            # Plot agent
+            color = "blue" if self.agents_alive[agent_id] else "gray"
+            plt.plot(
+                agent_position[0], agent_position[1], "o", color=color, markersize=6
+            )
 
-                nearest_prey_position = self._find_nearest_non_immobile_prey_position(
-                    agent_id
-                )
-                if nearest_prey_position is not None:
-                    # plot scare arms as thin green dashed line
-                    # perpendicular to the agent's direction to the prey
-                    direction = nearest_prey_position - agent_position
-                    direction /= np.linalg.norm(direction)
-                    arm = (
-                        np.array([-direction[1], direction[0]]) * self.scare_arm_length
+            # Plot collision radius
+            circle = Circle(
+                tuple(agent_position), self.collide_radius, color=color, fill=False
+            )
+            plt.gca().add_patch(circle)
+
+        # Plot streaming connections
+        for agent_id, agent_position in self.agent_positions.items():
+            if hasattr(self, "_last_actions") and agent_id in self._last_actions:
+                stream_target = self._last_actions[agent_id]["send_stream"]
+                if stream_target != self.num_friendlies:  # If not "no stream"
+                    # Line from streaming agent to receiving agent
+                    receiver_id = f"friendly_{stream_target}"
+                    receiver_pos = self.agent_positions[receiver_id]
+                    plt.plot(
+                        [agent_position[0], receiver_pos[0]],
+                        [agent_position[1], receiver_pos[1]],
+                        "g--",
+                        alpha=0.5,
                     )
 
-                    line = Line2D(
-                        [agent_position[0] - arm[0], agent_position[0] + arm[0]],
-                        [agent_position[1] - arm[1], agent_position[1] + arm[1]],
-                        color="green",
-                        linestyle="--",
+                    # Line from receiving agent to tower
+                    plt.plot(
+                        [receiver_pos[0], 0], [receiver_pos[1], 0], "g--", alpha=0.5
                     )
-                    plt.gca().add_line(line)
 
-                # plot collide radius as red solid circle
-                circle = Circle(
-                    tuple(agent_position), self.collide_radius, color="blue", fill=False
-                )
-                plt.gca().add_patch(circle)
-
-            if "prey" in agent_id:
-                # plot the prey's collision radius as a red solid circle
-                circle = Circle(
-                    tuple(agent_position), self.collide_radius, color="red", fill=False
-                )
-                plt.gca().add_patch(circle)
-
-        # calculate max abs of agent positions to set the limits
-        all_values = np.concatenate([
-            list(pos) for pos in self.agent_positions.values()
-        ])
-        most_extreme_position_number = max(
-            np.abs(all_values.min()), np.abs(all_values.max())
+        # Set plot limits
+        most_extreme = max(
+            np.abs(
+                [
+                    pos
+                    for positions in self.agent_positions.values()
+                    for pos in positions
+                ]
+                + [self.target_pos[0], self.target_pos[1]]
+            )
         )
+        most_extreme = max(40, most_extreme)
+        plt.xlim(-most_extreme - 5, most_extreme + 5)
+        plt.ylim(-most_extreme - 5, most_extreme + 5)
 
-        # make sure the most extreme position is at least 40
-        most_extreme_position_number = max(40, most_extreme_position_number)
-        buffer = 5
-
-        plt.xlim(
-            -most_extreme_position_number - buffer,
-            most_extreme_position_number + buffer,
-        )
-        plt.ylim(
-            -most_extreme_position_number - buffer,
-            most_extreme_position_number + buffer,
-        )
-
-        # set the aspect ratio is equal
+        # Set equal aspect ratio
         plt.gca().set_aspect("equal", adjustable="box")
+        plt.grid(True)
         plt.savefig(f"frames/frame_{self.step_count}.png")
         plt.close()
 
