@@ -4,7 +4,7 @@
   "friendly_speed": 1.0,
   "target_speed": 0.5,
   "optimal_target_dist": 5.0,
-  "step_communication_down": 100,
+  "communication_down_step": 100,
   "num_drones_down": 2,
   "max_steps": 200,
   "train": true

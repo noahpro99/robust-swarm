@@ -22,7 +22,7 @@ def get_observation_space(num_friendlies: int) -> gym.spaces.Space:
             "relative_agent_positions": gym.spaces.Box(
                 low=-1e3, high=1e3, shape=(len(agent_ids) * 2,), dtype=np.float32
             ),
-            "agents_alive": gym.spaces.MultiBinary(len(agent_ids)),
+            "agents_with_communication": gym.spaces.MultiBinary(len(agent_ids)),
             "our_position": gym.spaces.Box(
                 low=-1e3, high=1e3, shape=(2,), dtype=np.float32
             ),
@@ -51,7 +51,7 @@ class CustomEnv(MultiAgentEnv):
         self.friendly_speed: float = config.get("friendly_speed", 1.0)
         self.target_speed: float = config.get("target_speed", 0.5)
         self.optimal_target_dist = config.get("optimal_target_dist", 5.0)
-        self.step_communication_down = config.get("step_communication_down", 100)
+        self.communication_down_step = config.get("communication_down_step", 80)
         self.num_drones_down = config.get("num_drones_down", 2)
         self.max_steps: int = config.get("max_steps", 200)
         self.training: bool = config.get("train", True)
@@ -89,7 +89,9 @@ class CustomEnv(MultiAgentEnv):
                 np.linspace(0, 2 * np.pi, self.num_friendlies, endpoint=False)
             )
         }
-        self.agents_alive = {agent_id: True for agent_id in self.agent_positions}
+        self.agents_with_communication = {
+            agent_id: True for agent_id in self.agent_positions
+        }
         self.target_pos = np.array([-20.0, 20.0], dtype=np.float32)
 
         obs = self._get_obs()
@@ -102,8 +104,18 @@ class CustomEnv(MultiAgentEnv):
         done = {"__all__": False}
         truncated = {"__all__": False}
 
+        # Disable communication
+        if self.step_count == self.communication_down_step:
+            agents_to_disable = self.rnjesus.choice(
+                self._agent_ids, size=self.num_drones_down, replace=False
+            )
+            for agent_id in agents_to_disable:
+                self.agents_with_communication[agent_id] = False
+
         # move agents
         for agent_id, action in action_dict.items():
+            if not self.agents_with_communication[agent_id]:
+                continue
             action = np.multiply(
                 self.friendly_speed, np.clip(np.array(action["movement"]), -1, 1)
             )
@@ -124,18 +136,21 @@ class CustomEnv(MultiAgentEnv):
         # calculate rewards
         stream_reward = 0
         for agent_id, agent_position in self.agent_positions.items():
-            # if agent is alive and steam_target is not index -1 then steam and get reward
+            # if agent is has communication and steam_target is not index -1 then steam and get reward
             if (
-                self.agents_alive[agent_id]
+                self.agents_with_communication[agent_id]
                 and action_dict[agent_id]["send_stream"] != self.num_friendlies
             ):
-                distance_to_target = np.linalg.norm(agent_position - self.target_pos)
+                distance_to_optimal = abs(
+                    np.linalg.norm(agent_position - self.target_pos)
+                    - self.optimal_target_dist
+                )
                 midpoint_tower_to_agent = agent_position / 2
                 receiver_position = self.agent_positions[
                     f"friendly_{action_dict[agent_id]['send_stream']}"
                 ]
 
-                stream_reward += np.exp(-distance_to_target / 5) * np.exp(
+                stream_reward += np.exp(-distance_to_optimal / 5) * np.exp(
                     -np.linalg.norm(receiver_position - midpoint_tower_to_agent) / 5
                 )
 
@@ -161,22 +176,23 @@ class CustomEnv(MultiAgentEnv):
 
         for agent_id, agent_position in self.agent_positions.items():
 
-            # convert agent positions to relative positions
-            relative_positions = np.array(
-                [
-                    other_position - agent_position
-                    for other_position in self.agent_positions.values()
-                ]
-            ).flatten()
+            # For each other agent, if their communications are down, we use a zero vector
+            relative_positions = []
+            for other_id, other_position in self.agent_positions.items():
+                if not self.agents_with_communication[other_id]:
+                    relative_positions.extend([0.0, 0.0])
+                else:
+                    relative_pos = other_position - agent_position
+                    relative_positions.extend(relative_pos)
 
             relative_target_position = self.target_pos - agent_position
 
             obs[agent_id] = {
-                "relative_agent_positions": relative_positions,
-                "agents_alive": np.array(
+                "relative_agent_positions": np.array(relative_positions),
+                "agents_with_communication": np.array(
                     [
-                        1 if self.agents_alive[agent_id] else 0
-                        for agent_id in self.agent_positions
+                        1 if self.agents_with_communication[other_id] else 0
+                        for other_id in self.agent_positions
                     ]
                 ),
                 "our_position": agent_position,
@@ -199,7 +215,7 @@ class CustomEnv(MultiAgentEnv):
         # Plot all agents
         for agent_id, agent_position in self.agent_positions.items():
             # Plot agent
-            color = "blue" if self.agents_alive[agent_id] else "gray"
+            color = "blue" if self.agents_with_communication[agent_id] else "gray"
             plt.plot(
                 agent_position[0], agent_position[1], "o", color=color, markersize=6
             )
