@@ -104,7 +104,9 @@ class CustomEnv(MultiAgentEnv):
 
         # move agents
         for agent_id, action in action_dict.items():
-            action = np.multiply(self.friendly_speed, np.clip(np.array(action), -1, 1))
+            action = np.multiply(
+                self.friendly_speed, np.clip(np.array(action["movement"]), -1, 1)
+            )
             self.agent_positions[agent_id] += action
         # move target to the right
         self.target_pos[0] += self.target_speed
