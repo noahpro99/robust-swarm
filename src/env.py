@@ -49,7 +49,7 @@ class CustomEnv(MultiAgentEnv):
         self.num_friendlies: int = config.get("num_friendlies", 5)
         self.collide_radius: float = config.get("collide_radius", 0.5)
         self.friendly_speed: float = config.get("friendly_speed", 1.0)
-        self.target_speed: float = config.get("target_speed", 0.7)
+        self.target_speed: float = config.get("target_speed", 0.5)
         self.optimal_target_dist = config.get("optimal_target_dist", 5.0)
         self.step_communication_down = config.get("step_communication_down", 100)
         self.num_drones_down = config.get("num_drones_down", 2)
@@ -90,10 +90,11 @@ class CustomEnv(MultiAgentEnv):
             )
         }
         self.agents_alive = {agent_id: True for agent_id in self.agent_positions}
-        self.target_pos = np.array([-5, 5])
+        self.target_pos = np.array([-20., 20.], dtype=np.float32)
+
 
         obs = self._get_obs()
-        return obs
+        return obs, {}
 
     def step(self, action_dict):
         self.step_count += 1
@@ -115,7 +116,6 @@ class CustomEnv(MultiAgentEnv):
             agent_id: {"position": self.agent_positions[agent_id]}
             for agent_id in action_dict
         }
-        info["target"] = {"position": self.target_pos}
 
         # if the max steps are reached end the episode
         if self.step_count >= self.max_steps:
@@ -136,10 +136,10 @@ class CustomEnv(MultiAgentEnv):
                     f"friendly_{action_dict[agent_id]['send_stream']}"
                 ]
 
-                stream_reward += 0.5 * (
-                    np.exp(-distance_to_target)
-                    + np.exp(
-                        -np.linalg.norm(receiver_position - midpoint_tower_to_agent)
+                stream_reward += (
+                    np.exp(-distance_to_target / 5)
+                    * np.exp(
+                        -np.linalg.norm(receiver_position - midpoint_tower_to_agent) / 5
                     )
                 )
 
@@ -222,16 +222,20 @@ class CustomEnv(MultiAgentEnv):
                     # Line from streaming agent to receiving agent
                     receiver_id = f"friendly_{stream_target}"
                     receiver_pos = self.agent_positions[receiver_id]
-                    plt.plot(
-                        [agent_position[0], receiver_pos[0]],
-                        [agent_position[1], receiver_pos[1]],
-                        "g--",
-                        alpha=0.5,
+                    # Line from streaming agent to receiving agent with arrow
+                    plt.arrow(
+                        agent_position[0], agent_position[1],
+                        receiver_pos[0] - agent_position[0], receiver_pos[1] - agent_position[1],
+                        color='g', linestyle='--', alpha=0.5,
+                        head_width=0.8, head_length=1.2, length_includes_head=True
                     )
 
-                    # Line from receiving agent to tower
-                    plt.plot(
-                        [receiver_pos[0], 0], [receiver_pos[1], 0], "g--", alpha=0.5
+                    # Line from receiving agent to tower with arrow
+                    plt.arrow(
+                        receiver_pos[0], receiver_pos[1],
+                        -receiver_pos[0], -receiver_pos[1],
+                        color='g', linestyle='--', alpha=0.5,
+                        head_width=0.8, head_length=1.2, length_includes_head=True
                     )
 
         # Set plot limits

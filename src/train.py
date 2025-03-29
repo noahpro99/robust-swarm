@@ -9,7 +9,7 @@ from env import CustomEnv
 from ray.tune.registry import register_env
 
 
-def main(config_path: str, checkpoint_dir: str | None = None):
+def main(config_path: str, checkpoint_dir: str | None = None, checkpoint_interval: int = 10):
     with open(config_path) as f:
         env_config = json.load(f)
 
@@ -52,11 +52,9 @@ def main(config_path: str, checkpoint_dir: str | None = None):
 
         print(
             f"{i} {iteration_time:.1f}s ",
-            f"friendly: {result['env_runners']['policy_reward_mean'].get('friendly_policy', 0):.2f} ",
-            f"prey: {result['env_runners']['policy_reward_mean'].get('prey_policy', 0):.2f} ",
-        )
+            f"friendly: {result['env_runners']['policy_reward_mean'].get('friendly_policy', 0):.2f} "        )
 
-        if i % 20 == 0 and i != 0:
+        if i % checkpoint_interval == 0 and i != 0:
             algo.save(checkpoint_dir)
             print(f"Checkpoint saved at iteration {i} in {checkpoint_dir}")
         i += 1
@@ -77,6 +75,13 @@ if __name__ == "__main__":
         required=False,
         help="Path to the checkpoint directory",
     )
+
+    parser.add_argument(
+        "--checkpoint_interval",
+        type=int,
+        default=10,
+        help="Interval (in iterations) at which to save checkpoints",
+    )
     args = parser.parse_args()
 
-    main(args.config_path, args.checkpoint_dir)
+    main(args.config_path, args.checkpoint_dir, args.checkpoint_interval)

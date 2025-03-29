@@ -1,13 +1,11 @@
 {
   "num_friendlies": 4,
-  "num_prey": 1,
-  "scare_arm_length": 5,
   "collide_radius": 0.5,
-  "prey_speed": 0.6,
   "friendly_speed": 1.0,
-  "noise_distance": 0.06,
-  "noise_direction": 0.04,
-  "update_mean": 2,
-  "update_std": 0.5,
-  "max_steps": 200
+  "target_speed": 0.5,
+  "optimal_target_dist": 5.0,
+  "step_communication_down": 100,
+  "num_drones_down": 2,
+  "max_steps": 200,
+  "train": true
 }
