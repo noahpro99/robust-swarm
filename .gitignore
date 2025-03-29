@@ -1,2 +1,7 @@
-.vscode
+**/__pycache__
 .venv
+**/temp*
+.vscode
+episodes
+ray_results
+frames
