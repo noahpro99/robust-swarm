@@ -1,0 +1,8 @@
+{
+  "prey_speed": 0.05,
+  "friendly_speed": 0.05,
+  "noise_distance": 0.06,
+  "noise_direction": 0.04,
+  "update_mean": 2,
+  "update_std": 0.5
+}
