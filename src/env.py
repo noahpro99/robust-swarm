@@ -47,7 +47,7 @@ def get_action_space(num_friendlies: int) -> gym.spaces.Space:
 class CustomEnv(MultiAgentEnv):
     def __init__(self, config: dict):
         self.num_friendlies: int = config.get("num_friendlies", 5)
-        self.collide_radius: float = config.get("collide_radius", 0.5)
+        self.collide_radius: float = config.get("collide_radius", 1)
         self.friendly_speed: float = config.get("friendly_speed", 1.0)
         self.target_speed: float = config.get("target_speed", 0.5)
         self.optimal_target_dist = config.get("optimal_target_dist", 5.0)
@@ -161,7 +161,7 @@ class CustomEnv(MultiAgentEnv):
                     and np.linalg.norm(agent_position - other_position)
                     < self.collide_radius * 2
                 ):
-                    rewards[agent_id] -= 0.01
+                    rewards[agent_id] -= 1
 
         # give all agents the stream reward
         for agent_id in self.agent_positions:
@@ -205,7 +205,7 @@ class CustomEnv(MultiAgentEnv):
         plt.figure(figsize=(8, 8))
 
         # Plot the tower at origin
-        plt.plot(0, 0, "ks", markersize=10, label="Tower")
+        plt.plot(0, 0, "ks", markersize=10, label="Tower", fillstyle='none')
 
         # Plot target
         plt.plot(
@@ -243,8 +243,8 @@ class CustomEnv(MultiAgentEnv):
                         color="g",
                         linestyle="--",
                         alpha=0.5,
-                        head_width=0.8,
-                        head_length=1.2,
+                        head_width=1.4,
+                        head_length=2.4,
                         length_includes_head=True,
                     )
 
@@ -257,8 +257,8 @@ class CustomEnv(MultiAgentEnv):
                         color="g",
                         linestyle="--",
                         alpha=0.5,
-                        head_width=0.8,
-                        head_length=1.2,
+                        head_width=1.4,
+                        head_length=2.4,
                         length_includes_head=True,
                     )
 
