@@ -1,4 +1,4 @@
-ray
+ray==2.34.0
 imageio[ffmpeg]
 gymnasium
 dm_tree
