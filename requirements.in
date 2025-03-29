@@ -12,3 +12,4 @@ opencv-python
 scipy
 torch
 lz4
+matplotlib
