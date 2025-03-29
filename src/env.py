@@ -140,6 +140,14 @@ class CustomEnv(MultiAgentEnv):
             if (
                 self.agents_with_communication[agent_id]
                 and action_dict[agent_id]["send_stream"] != self.num_friendlies
+                and self.agents_with_communication[
+                    f"friendly_{action_dict[agent_id]['send_stream']}"
+                ]
+                # and relay is not streaming
+                and action_dict[f"friendly_{action_dict[agent_id]['send_stream']}"][
+                    "send_stream"
+                ]
+                != agent_id
             ):
                 distance_to_optimal = abs(
                     np.linalg.norm(agent_position - self.target_pos)
@@ -205,7 +213,7 @@ class CustomEnv(MultiAgentEnv):
         plt.figure(figsize=(8, 8))
 
         # Plot the tower at origin
-        plt.plot(0, 0, "ks", markersize=10, label="Tower", fillstyle='none')
+        plt.plot(0, 0, "ks", markersize=10, label="Tower", fillstyle="none")
 
         # Plot target
         plt.plot(
@@ -230,37 +238,43 @@ class CustomEnv(MultiAgentEnv):
         for agent_id, agent_position in self.agent_positions.items():
             if hasattr(self, "_last_actions") and agent_id in self._last_actions:
                 stream_target = self._last_actions[agent_id]["send_stream"]
-                if stream_target != self.num_friendlies:  # If not "no stream"
-                    # Line from streaming agent to receiving agent
-                    receiver_id = f"friendly_{stream_target}"
-                    receiver_pos = self.agent_positions[receiver_id]
-                    # Line from streaming agent to receiving agent with arrow
-                    plt.arrow(
-                        agent_position[0],
-                        agent_position[1],
-                        receiver_pos[0] - agent_position[0],
-                        receiver_pos[1] - agent_position[1],
-                        color="g",
-                        linestyle="--",
-                        alpha=0.5,
-                        head_width=1.4,
-                        head_length=2.4,
-                        length_includes_head=True,
-                    )
+            if (
+                self.agents_with_communication[agent_id]
+                and stream_target != self.num_friendlies
+                and self.agents_with_communication[f"friendly_{stream_target}"]
+                and self._last_actions[f"friendly_{stream_target}"]["send_stream"]
+                != int(agent_id.split("_")[1])
+            ):
+                # Line from streaming agent to receiving agent
+                receiver_id = f"friendly_{stream_target}"
+                receiver_pos = self.agent_positions[receiver_id]
+                # Line from streaming agent to receiving agent with arrow
+                plt.arrow(
+                    agent_position[0],
+                    agent_position[1],
+                    receiver_pos[0] - agent_position[0],
+                    receiver_pos[1] - agent_position[1],
+                    color="g",
+                    linestyle="--",
+                    alpha=0.5,
+                    head_width=1.4,
+                    head_length=2.4,
+                    length_includes_head=True,
+                )
 
-                    # Line from receiving agent to tower with arrow
-                    plt.arrow(
-                        receiver_pos[0],
-                        receiver_pos[1],
-                        -receiver_pos[0],
-                        -receiver_pos[1],
-                        color="g",
-                        linestyle="--",
-                        alpha=0.5,
-                        head_width=1.4,
-                        head_length=2.4,
-                        length_includes_head=True,
-                    )
+                # Line from receiving agent to tower with arrow
+                plt.arrow(
+                    receiver_pos[0],
+                    receiver_pos[1],
+                    -receiver_pos[0],
+                    -receiver_pos[1],
+                    color="g",
+                    linestyle="--",
+                    alpha=0.5,
+                    head_width=1.4,
+                    head_length=2.4,
+                    length_includes_head=True,
+                )
 
         # Set plot limits
         most_extreme = max(
