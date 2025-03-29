@@ -90,8 +90,7 @@ class CustomEnv(MultiAgentEnv):
             )
         }
         self.agents_alive = {agent_id: True for agent_id in self.agent_positions}
-        self.target_pos = np.array([-20., 20.], dtype=np.float32)
-
+        self.target_pos = np.array([-20.0, 20.0], dtype=np.float32)
 
         obs = self._get_obs()
         return obs, {}
@@ -136,11 +135,8 @@ class CustomEnv(MultiAgentEnv):
                     f"friendly_{action_dict[agent_id]['send_stream']}"
                 ]
 
-                stream_reward += (
-                    np.exp(-distance_to_target / 5)
-                    * np.exp(
-                        -np.linalg.norm(receiver_position - midpoint_tower_to_agent) / 5
-                    )
+                stream_reward += np.exp(-distance_to_target / 5) * np.exp(
+                    -np.linalg.norm(receiver_position - midpoint_tower_to_agent) / 5
                 )
 
             # punish agents for colliding with other agents
@@ -224,18 +220,30 @@ class CustomEnv(MultiAgentEnv):
                     receiver_pos = self.agent_positions[receiver_id]
                     # Line from streaming agent to receiving agent with arrow
                     plt.arrow(
-                        agent_position[0], agent_position[1],
-                        receiver_pos[0] - agent_position[0], receiver_pos[1] - agent_position[1],
-                        color='g', linestyle='--', alpha=0.5,
-                        head_width=0.8, head_length=1.2, length_includes_head=True
+                        agent_position[0],
+                        agent_position[1],
+                        receiver_pos[0] - agent_position[0],
+                        receiver_pos[1] - agent_position[1],
+                        color="g",
+                        linestyle="--",
+                        alpha=0.5,
+                        head_width=0.8,
+                        head_length=1.2,
+                        length_includes_head=True,
                     )
 
                     # Line from receiving agent to tower with arrow
                     plt.arrow(
-                        receiver_pos[0], receiver_pos[1],
-                        -receiver_pos[0], -receiver_pos[1],
-                        color='g', linestyle='--', alpha=0.5,
-                        head_width=0.8, head_length=1.2, length_includes_head=True
+                        receiver_pos[0],
+                        receiver_pos[1],
+                        -receiver_pos[0],
+                        -receiver_pos[1],
+                        color="g",
+                        linestyle="--",
+                        alpha=0.5,
+                        head_width=0.8,
+                        head_length=1.2,
+                        length_includes_head=True,
                     )
 
         # Set plot limits
