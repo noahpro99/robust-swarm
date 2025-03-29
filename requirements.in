@@ -1,0 +1,14 @@
+ray
+imageio[ffmpeg]
+gymnasium
+dm_tree
+typer
+gputil
+tqdm
+pyarrow
+pandas
+ray[tune]
+opencv-python
+scipy
+torch
+lz4
