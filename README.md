@@ -1,6 +1,6 @@
 # Robust Swarm
 
-[![](videos/simulation_20250329220448.mp4)](videos/simulation_20250329220448.mp4)
+[![](images/video_image.png)](videos/simulation_20250329220448.mp4)
 
 ## Setup
 
