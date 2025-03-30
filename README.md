@@ -8,23 +8,12 @@ source .venv/bin/activate
 pip install -r requirements.in
 python src/train.py --help
 python src/replay.py --help
-python src/test.py --help
 ```
 
-If the gpu cannot be found on Jupiter Hub, you may need to reinstall torch
+If the gpu cannot be found on, you may need to reinstall torch with the right version of cuda for example if you have cuda 12.1 installed, you can run:
 
 ```bash
 pip install --upgrade --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 --user
-```
-
-## Viewing Replays in Jupiter Hub
-
-You can use the following to view a replay in Jupiter Hub in a python cell. Better not to commit the notebook with the video in it however.
-
-```python
-from IPython.display import Video
-path = "../" + "episodes/simulation_20240727090801.mp4"
-Video(path, embed=True, width=500)
 ```
 
 ## Reward Function
