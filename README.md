@@ -1,5 +1,7 @@
 # Robust Swarm
 
+![](videos/simulation_20250329220448.mp4)
+
 ## Setup
 
 ```bash
