@@ -2,11 +2,17 @@
 
 A reinforcement learning-based agent that dynamically reallocates tasks and optimizes paths to keep drone swarms mission-cohesive, even amid electronic warfare and harsh weather.
 
+### Watch Video
+
 [![Watch Video](images/video_image.png)](videos/simulation_20250329220448.mp4)
 
 We train the drone swarm to send multiple live streams back to the tower by means of a relay drone. Half way through we take out the communication of half of the drones to simulate a jamming attack. The swarm learns to reallocate the tasks to keep the livestream up.
 
+### Environment
+
 ![Environment](images/diagram.png)
+
+### Actions and Observations
 
 ![Actions and Observations](images/actions-movement.png)
 
