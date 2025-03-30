@@ -16,6 +16,14 @@ If the gpu cannot be found on, you may need to reinstall torch with the right ve
 pip install --upgrade --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 --user
 ```
 
+## Actions and Observations
+
+![](images/actions-movement.png)
+
+## Environment
+
+![](images/diagram.png)
+
 ## Reward Function
 
 For each agent $i$ with position $p_i$, the reward $R_i$ is:
