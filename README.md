@@ -1,5 +1,7 @@
 # Robust Swarm
 
+A reinforcement learning-based agent that dynamically reallocates tasks and optimizes paths to keep drone swarms mission-cohesive, even amid electronic warfare and harsh weather.
+
 [![](images/video_image.png)](videos/simulation_20250329220448.mp4)
 
 ## Setup
